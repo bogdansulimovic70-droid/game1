@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D CSS Shooter</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; touch-action: none; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #020205; font-family: monospace; }
+        #view { position: relative; width: 100vw; height: 100vh; background: linear-gradient(to bottom, #070714 50%, #050a05 50%); overflow: hidden; }
+        #screen3d { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; }
+        
+        /* 3D Полосы на чистом CSS */
+        .v-bar { width: 1%; height: 100px; background: #1e2e60; margin: 0; padding: 0; }
+        
+        /* Спрайты (Враги и монеты) */
+        .sprite { position: absolute; border-radius: 50%; display: none; transform: translate(-50%, -50%); z-index: 10; }
+        .coin-sp { background: #ffd700; box-shadow: 0 0 10px #ffd700; }
+        .enemy-sp { background: #ff2222; border: 4px solid #ffcc99; border-radius: 20%; }
+
+        /* HUD и интерфейс */
+        #hud { position: absolute; top: 15px; left: 15px; font-weight: bold; color: #fff; font-size: 14px; z-index: 20; text-shadow: 1px 1px 2px #000; }
+        #cross { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #00ff00; font-size: 24px; font-weight: bold; z-index: 20; }
+        
+        /* Управление */
+        #ui { position: absolute; bottom: 25px; left: 0; width: 100%; display: flex; justify-content: space-between; padding: 0 25px; z-index: 25; pointer-events: none; }
+        .joy-pad { width: 95px; height: 95px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; display: flex; justify-content: center; align-items: center; pointer-events: auto; }
+        #stick { width: 34px; height: 34px; background: #fff; border-radius: 50%; }
+        .btn-cl { display: flex; gap: 15px; align-items: center; }
+        .action-btn { width: 75px; height: 75px; border-radius: 50%; color: #fff; font-weight: bold; display: flex; justify-content: center; align-items: center; pointer-events: auto; box-shadow: 0 0 10px rgba(0,0,0,0.5); font-size: 13px; }
+        #jump { background: rgba(255,255,255,0.2); border: 2px solid #fff; }
+        #shoot { background: rgba(255, 30, 30, 0.6); border: 3px solid #ff1111; width: 85px; height: 85px; }
+
+        /* Оружие */
+        #weap-gun { position: absolute; bottom: 0; right: 15%; width: 70px; height: 140px; background: #334; border-radius: 10px 10px 0 0; z-index: 15; transition: transform 0.05s; }
+        #weap-knife { position: absolute; bottom: 0; left: 15%; width: 25px; height: 90px; background: #667; z-index: 15; }
+    </style>
+</head>
+<body>
+
+<div id="view">
+    <div id="hud">
+        ЖИЗНЬ: <span id="hp">100</span>%<br>
+        МОНЕТЫ: <span id="coins" style="color:#ffd700">0</span>
+    </div>
+    <div id="cross">+</div>
+    <div id="screen3d"></div>
+    
+    <!-- Спрайты поверх стен -->
+    <div id="sp-coin" class="sprite coin-sp"></div>
+    <div id="sp-enemy" class="sprite enemy-sp"></div>
+
+    <div id="weap-knife"></div>
+    <div id="weap-gun"></div>
+
+    <div id="ui">
+        <div class="joy-pad" id="padZone"><div id="stick"></div></div>
+        <div class="btn-cl">
+            <div class="action-btn" id="jump">ПРЫЖОК</div>
+            <div class="action-btn" id="shoot">ОГОНЬ</div>
+        </div>
+    </div>
+</div>
+
+<script>
+const screen3d = document.getElementById("screen3d");
+const NUM_BARS = 100; // 100 CSS полос для построения псевдо-3D мира
+
+// Создаем полосы в DOM дереве
+for(let i=0; i<NUM_BARS; i++) {
+    let bar = document.createElement("div");
+    bar.className = "v-bar";
+    bar.style.width = (100 / NUM_BARS) + "vw";
+    screen3d.appendChild(bar);
+}
+const bars = document.querySelectorAll(".v-bar");
+
+const map = [
+   ,
+   ,
+   ,
+   ,
+   ,
+   ,
+   ,
+   ,
+   ,
+   
+];
+const MAP_SIZE = 10;
+
+let px = 1.5, py = 1.5, pa = 0;
+let hp = 100, coins = 0, jumpY = 0, jumpState = 0;
+let coinObj = {x: 4.5, y: 4.5, active: true};
+let enemyObj = {x: 6.5, y: 5.5, active: true, shootTimer: 0};
+
+// Джойстик ходьбы
+const padZone = document.getElementById("padZone"), stick = document.getElementById("stick");
+let joyActive = false, startX = 0, startY = 0, jx = 0, jy = 0;
+padZone.addEventListener('touchstart', e => { joyActive = true; startX = e.touches.clientX; startY = e.touches.clientY; });
+window.addEventListener('touchmove', e => {
+    if (!joyActive) return;
+    let dx = e.touches.clientX - startX, dy = e.touches.clientY - startY;
+    let d = Math.min(Math.hypot(dx, dy), 35), a = Math.atan2(dy, dx);
+    jx = Math.cos(a) * (d / 35); jy = Math.sin(a) * (d / 35);
+    stick.style.transform = `translate(${Math.cos(a)*dist=d}px, ${Math.sin(a)*d}px)`;
+});
+window.addEventListener('touchend', () => { joyActive = false; jx = 0; jy = 0; stick.style.transform = "translate(0px,0px)"; });
+
+// Обзор свайпами справа
+let lookActive = false, lastX = 0;
+window.addEventListener('touchstart', e => { if(e.touches.clientX > window.innerWidth/2) { lookActive = true; lastX = e.touches.clientX; } });
+window.addEventListener('touchmove', e => { if(lookActive) { pa += (e.touches.clientX - lastX) * 0.008; lastX = e.touches.clientX; } });
+window.addEventListener('touchend', () => lookActive = false);
+
+// Прыжок и Огонь
+document.getElementById("jump").addEventListener('touchstart', e => { if(jumpState===0) jumpState = 1; e.preventDefault(); });
+document.getElementById("shoot").addEventListener('touchstart', e => {
+    document.getElementById("weap-gun").style.transform = "translateY(20px)";
+    setTimeout(() => document.getElementById("weap-gun").style.transform = "translateY(0)", 60);
+    
+    if(enemyObj.active) {
+        let angle = Math.atan2(enemyObj.y - py, enemyObj.x - px) - pa;
+        while(angle < -Math.PI) angle += Math.PI*2; while(angle > Math.PI) angle -= Math.PI*2;
+        if(Math.abs(angle) < 0.2 && Math.hypot(enemyObj.x-px, enemyObj.y-py) < ray(pa)) {
+            enemyObj.active = false; coins += 5; document.getElementById("coins").innerText = coins;
+            setTimeout(() => { enemyObj.active = true; }, 4000);
+        }
+    }
+    e.preventDefault();
+});
+
+function ray(angle) {
+    let si = Math.sin(angle), co = Math.cos(angle);
+    for(let d=0; d<14; d+=0.08) {
+        let tx = Math.floor(px + co*d), ty = Math.floor(py + si*d);
+        if(tx>=0 && tx<MAP_SIZE && ty>=0 && ty<MAP_SIZE && map[ty][tx] === 1) return d;
+    }
+    return 14;
+}
+
+function loop() {
+    if(joyActive) {
+        let nx = px - Math.cos(pa) * jy * 0.045, ny = py - Math.sin(pa) * jy * 0.045;
+        if(map[Math.floor(py)][Math.floor(nx)] !== 1) px = nx;
+        if(map[Math.floor(ny)][Math.floor(px)] !== 1) py = ny;
+    }
+    if(jumpState === 1) { jumpY += 3; if(jumpY>=30) jumpState=2; }
+    else if(jumpState === 2) { jumpY -= 3; if(jumpY<=0){ jumpY=0; jumpState=0; } }
+
+    // Логика монеты
+    if(coinObj.active && Math.hypot(coinObj.x-px, coinObj.y-py) < 0.4) {
+        coinObj.active = false; coins++; document.getElementById("coins").innerText = coins;
+        setTimeout(() => coinObj.active = true, 3000);
+    }
+
+    // ИИ Врага
+    if(enemyObj.active) {
+        enemyObj.shootTimer++;
+        if(enemyObj.shootTimer > 60) {
+            enemyObj.shootTimer = 0;
+            if(Math.hypot(enemyObj.x-px, enemyObj.y-py) < ray(Math.atan2(enemyObj.y-py, enemyObj.x-px))) {
+                hp -= 10; if(hp<=0) hp=100; document.getElementById("hp").innerText = hp;
+            }
+        }
+    }
+
+    // Рендер 3D стен через CSS высоты
+    let fov = Math.PI / 3;
+    let hH = window.innerHeight;
+    for(let i=0; i<NUM_BARS; i++) {
+        let ra = (pa - fov/2) + (i/NUM_BARS)*fov;
+        let d = ray(ra) * Math.cos(ra - pa);
+        let wh = Math.min(hH, hH / d);
+        let c = Math.max(20, 165 - d*11);
+        
+        bars[i].style.height = wh + "px";
+        bars[i].style.backgroundColor = `rgb(${c*0.3},${c*0.5},${c})`;
+        bars[i].style.transform = `translateY(${-jumpY}px)`;
+    }
+
+    // Рендер Спрайтов (Монеты и Врага)
+    renderSprite(coinObj, document.getElementById("sp-coin"), 0.3, hH);
+    renderSprite(enemyObj, document.getElementById("sp-enemy"), 0.6, hH);
+
+    requestAnimationFrame(loop);
+}
+
+function renderSprite(obj, el, sizeMod, hH) {
+    if(!obj.active) { el.style.display = "none"; return; }
+    let ex = obj.x - px, ey = obj.y - py;
+    let sa = Math.atan2(ey, ex) - pa;
+    while(sa < -Math.PI) sa += Math.PI*2; while(sa > Math.PI) sa -= Math.PI*2;
+
+    if(Math.abs(sa) < Math.PI/3) {
+        let d = Math.hypot(ex, ey);
+        let sSize = Math.min(hH, (hH / d) * sizeMod);
+        let scrX = (window.innerWidth / 2) + Math.tan(sa) * (window.innerWidth / 2);
+        let scrY = (hH / 2) - jumpY;
+
+        el.style.display = "block";
+        el.style.left = scrX + "px";
+        el.style.top = scrY + "px";
+        el.style.width = sSize + "px";
+        el.style.height = sSize + "px";
+    } else {
+        el.style.display = "none";
+    }
+}
+
+loop();
+</script>
+</body>
+</html>
